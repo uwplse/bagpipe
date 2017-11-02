@@ -1,0 +1,3 @@
+[submodule "autonomous-systems/coq/Library"]
+	path = autonomous-systems/coq/Library
+	url = git@github.com:uw-plse/coq-stdlib

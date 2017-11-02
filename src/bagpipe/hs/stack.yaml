@@ -1,0 +1,9 @@
+flags: {}
+packages:
+- '.'
+docker:
+  enable: true
+extra-deps:
+- sexp-0.6
+- text-format-simple-1.1.0
+resolver: lts-2.22

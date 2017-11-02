@@ -1,0 +1,6 @@
+data/
+TestCBGP
+.stack-work
+*.vo
+*.glob
+*.aux
