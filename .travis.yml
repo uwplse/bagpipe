@@ -1,18 +1,16 @@
 sudo: required
-
 language: c
-
 services:
-  - docker
-
+- docker
 before_install:
-  - docker build -t bagpipe .
-  - rm -f example.tar
-  - wget http://bagpipe.uwplse.org/bagpipe/assets/example.tar
-
+- docker build -t bagpipe .
+- rm -f example.tar
+- wget http://bagpipe.uwplse.org/bagpipe/assets/example.tar
 script:
-  - cat example.tar | docker run -i bagpipe verify atla
-
+- cat example.tar | docker run -i bagpipe verify atla
 after_success:
-  - docker rm -f bagpipe
-  - rm -f example.tar
+- docker rm -f bagpipe
+- rm -f example.tar
+notifications:
+  slack:
+    secure: Dm4cAC9JlxSF2h9j/oZzrOSu6fNverCWXHCTzkAji7JGPbKHGuGu5mooHWCYi9rx2/3UitEucdo9DQgVZrLuP4jXWMkevAXNSx7YqkI1Eb+D/flQzFNiS7m6NsPUzOh/i43jDp2mItUVAOKhnRm6KX6RXVtRO3ogl36ZlSYDNFGgFZOTE5fAhJBrpIqFne4qmh2D/HfJTTOr07gqvZOvREczo/rPQcfyuWkE3SHUfYtaGuSXhk6f+tyUnhYMvxsxUlOjuPT2tCWTGQ1HRfSzOWOyXIQTYVq1bH/gniFXgIHiUJatl6qkuXRvFGuPhFol8g2jaPuOKPMDPULE1R0aal4aV5KYBZwTGNTtsqH3IvzQAQw22THGLpJZFLdkCHlt0zpo2lQEEk2x7tPnqxJXaWTBzN9jmSr8dRRZwPKZIpig0lXjmJucWVZEIjBiQLMS4nVKRSiik2bejTYRuhhIEJ2M285aukZlw6490JYPSnBk8nhIZg1nZMLgLZpot9mz7tRXgEg77iBOVvN+00alNJN50xOtNoKj2LMhEyTX81iZHhLm2U2zoxe2Xl+BlO+ZKYgSAv2My3eWr4krcGLDstPD/IpAzQnTrhWX6r3XHpFICHXrnPR+Hg7sfSjBcZdEBEYKoETI5Tx28WxO1ztE51j60dhI5vXpGfaR3tJC4Rk=
