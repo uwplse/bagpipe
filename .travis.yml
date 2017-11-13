@@ -3,12 +3,10 @@ language: c
 services:
 - docker
 before_install:
-- docker pull sslyu/bagpipe
-- docker run --name bagpipe --entrypoint /bin/bash -v $(pwd):/bagpipe sslyu/bagpipe -c "make -C /bagpipe"
 - rm -f example.tar
 - wget http://bagpipe.uwplse.org/bagpipe/assets/example.tar
-script:
-- cat example.tar | docker run -i bagpipe verify atla
+- docker pull sslyu/bagpipe
+- docker run --name bagpipe --entrypoint /bin/bash -v $(pwd):/bagpipe sslyu/bagpipe -c "make -C /bagpipe; cat example.tar | bagpipe verify atla"
 after_success:
 - docker rm -f bagpipe
 - rm -f example.tar
