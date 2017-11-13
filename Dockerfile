@@ -82,7 +82,7 @@ ADD src/bagpipe/hs/bagpipe.cabal /bagpipe/src/bagpipe/hs/
 RUN cd /bagpipe/src/bagpipe/hs; cabal update; cabal install Cabal; cabal install --only-dependencies
 
 # build bagpipe
-# ADD . /bagpipe
+ADD . /bagpipe
 # RUN make -C /bagpipe
 # test bagpipe
 # RUN cd /bagpipe/src/bagpipe/racket; ./run-tests
