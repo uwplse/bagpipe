@@ -2,12 +2,13 @@ sudo: required
 language: c
 services:
 - docker
-before_install:
+install:
 - rm -f example.tar
 - wget http://bagpipe.uwplse.org/bagpipe/assets/example.tar
 - docker pull sslyu/bagpipe
-- docker run --name bagpipe --entrypoint /bin/bash -v $(pwd):/bagpipe sslyu/bagpipe -c "cd /bagpipe; make; cat example.tar | bagpipe verify atla"
-after_success:
+script:
+- docker run --name bagpipe --entrypoint /bin/bash -v $(pwd):/bagpipe sslyu/bagpipe -c "make -C /bagpipe; cat /bagpipe/example.tar | bagpipe verify atla"
+after_script:
 - docker rm -f bagpipe
 - rm -f example.tar
 notifications:
