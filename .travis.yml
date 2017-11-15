@@ -5,7 +5,7 @@ services:
 install:
 - docker pull sslyu/bagpipe
 script:
-- docker run --name bagpipe --entrypoint /bin/bash -v $(pwd):/bagpipe sslyu/bagpipe -c "make -C /bagpipe; ./bagpipe/travis_tests.sh"
+- docker run --name bagpipe --entrypoint /bin/bash -v $(pwd):/bagpipe sslyu/bagpipe -c "make -C /bagpipe; /bagpipe/travis_tests.sh"
 after_script:
 - docker rm -f bagpipe
 notifications:
