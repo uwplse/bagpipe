@@ -3,13 +3,13 @@
 rm -f example2.tar
 rm -f out.txt
 wget http://bagpipe.uwplse.org/bagpipe/assets/example2.tar
-cat example2.tar | bagpipe verify no-martian disable-martian-checks kans atla > out.txt
+cat example2.tar | bagpipe verify no-martian disable-martian-checks kans atla > out.txt 2> /dev/null
 
-success=0
+exit_code=1
 if [ `grep "policy does not hold" out.txt | wc -l` -ne 0 ]; then
-    success=1
+    exit_code=0
 fi
 
 rm -f example2.tar
 rm -f out.txt
-exit $success
+exit $exit_code
