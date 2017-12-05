@@ -9,8 +9,9 @@ cat example2.tar | bagpipe verify no-martian disable-martian-checks kans atla > 
 
 exit_code=1
 if [ `grep "policy does not hold" out.txt | wc -l` -ne 0 ]; then
-    cat error.txt
     exit_code=0
+else
+    cat error.txt
 fi
 
 rm -f example2.tar
