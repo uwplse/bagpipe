@@ -290,12 +290,12 @@ Section BGPV.
 
   Arguments head {_} _ /.
 
-  Parameter bgpvScheduler : forall Q v, {o | o = BGPV.listSearch (bind v (compose optionToSpace (compose head (bgpvCore' Q))))}.
+  Parameter bgpvScheduler : forall Q v, {o | o = listBasedSearch (listBasedBind v (compose optionToSpace (compose head (bgpvCore' Q))))}.
 
-  Definition bgpvAll := @parallelBGPV solver _ _ _ _ _ _ _ _ _ Query denoteQuery bgpvScheduler.
-  Definition bgpvImport := @parallelBGPVImport solver _ _ _ _ _ _ _ _ _ Query denoteQuery bgpvScheduler.
-  Definition bgpvExport := @parallelBGPVExport solver _ _ _ _ _ _ _ _ _ Query denoteQuery bgpvScheduler.
-  Definition bgpvPreference := @parallelBGPVPreference solver _ _ _ _ _ _ _ _ _ Query denoteQuery bgpvScheduler.
+  Definition bgpvAll := @parallelBGPV solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
+  Definition bgpvImport := @parallelBGPVImport solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
+  Definition bgpvExport := @parallelBGPVExport solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
+  Definition bgpvPreference := @parallelBGPVPreference solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
 
   Parameter ExecutionMode : Type.
   Parameter elimExecutionMode : forall {A}, Mode -> A -> A -> A -> A -> A.

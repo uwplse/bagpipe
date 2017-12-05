@@ -929,7 +929,9 @@ Section BGPV.
     refine [r & (s, d, p, ai, ai', al', al, ao)].
   Defined.
 
-  Context `{M:@Minus BA}.
+  Context `{BA':Basic}.
+  Context `{PS':@Search BA'}.
+  Context `{M:@Minus BA'}.
   
   Arguments head {_} _ /.
 
@@ -1627,7 +1629,7 @@ Section Incrementalization.
              (Q : Query)
              (s' s : Space (routingPair t))
     := @incBgpvScheduler _ _ _ _ _ _
-                        t c _ (denoteQuery t c) _ (bgpvScheduler t c) Q s' s.
+                        t c _ (denoteQuery t c) _ _ _ (bgpvScheduler t c) Q s' s.
 
   (* the incremental BGPV we want: translates s from the old topology to the
    * new one, then subtracts from s' *)
