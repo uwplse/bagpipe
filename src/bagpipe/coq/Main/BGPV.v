@@ -22,12 +22,31 @@ Require Import Policy.
 Require Import FastPolicy.
 Require Import SpaceSearch.Space.Basic.
 Require Import SpaceSearch.Space.Full.
+Require Import SpaceSearch.Space.Minus.
+Require Import SpaceSearch.Search.Incremental.
 Require Import SpaceSearch.Search.Precise.
 Require Import SpaceSearchEx.
 Require Import Datatypes.
 Require Import SingleAS.
 Import EqNotations.
 Import ListNotations.
+
+Existing Instance singleASTopology.
+Existing Instance singleASConfiguration.
+Existing Instance enumerableIncoming.
+Existing Instance eqDecIncoming.
+Existing Instance eqDecSigT.
+Existing Instance enumerableSigT.
+Existing Instance enumerableRoutingInformation. 
+Existing Instance eqDecRoutingInformation. 
+Existing Instance eqDecRouterType.
+Existing Instance enumerableRouterType.
+Existing Instance fullEmpty.
+Existing Instance fullUnit.
+Existing Instance fullSigT.
+
+Definition optionToSpace `{Basic} {A} (o:option A) : Space A :=
+  match o with None => empty | Some a => single a end.
 
 Section BGPV.
   Context `{BA:Basic}.
@@ -41,25 +60,11 @@ Section BGPV.
   Context `{eqDecPathAttributes : eqDec PathAttributes}.
   Context `{fullPathAttributes : @Full BA PathAttributes}.
 
-  Context `{SingleASTopologyClass}.
-  Context `{@SingleASConfigurationClass _ _ _}.
+  Context `{topology : SingleASTopologyClass}.
+  Context `{configuration : @SingleASConfigurationClass _ _ _}.
 
   Context {fullNeighbors : forall {S:Basic} s, @Full S {d : router external & neighbor s d}}.
   Context {fullRouters : forall {S:Basic} t, @Full S (router t)}.
-
-  Existing Instance singleASTopology.
-  Existing Instance singleASConfiguration.
-  Existing Instance enumerableIncoming.
-  Existing Instance eqDecIncoming.
-  Existing Instance eqDecSigT.
-  Existing Instance enumerableSigT.
-  Existing Instance enumerableRoutingInformation. 
-  Existing Instance eqDecRoutingInformation. 
-  Existing Instance eqDecRouterType.
-  Existing Instance enumerableRouterType.
-  Existing Instance fullEmpty.
-  Existing Instance fullUnit.
-  Existing Instance fullSigT.
 
   Definition trackingAttributes' := trackingAttributes.
   Definition trackingConfiguration' := @trackingConfiguration _ _ plainAttributes _.
@@ -570,6 +575,9 @@ Section BGPV.
   - exact true.
   Defined.
 
+  (* TrackingOk => forwardable in the initial network (no update messages
+   * have been forwarded before), that is, acceptable by all import and
+   * export policies down the network *)
   Definition TrackingOk r p := {s : incoming [internal & r] & {a : @RoutingInformation trackingAttributes' | @trackingOk _ _ plainAttributes _ [internal & r] s p a}}.
 
   Instance fullNeighbor `{S:Basic} : forall s d, @Full S (neighbor s d).
@@ -668,6 +676,9 @@ Section BGPV.
   Definition constrain (b:bool) := if b then single tt else empty.
 
   Variable Query : Type.
+
+  (* See section 4 of 2016 tech report for description of what the fields
+   * in the query represent *)
   Variable denoteQuery : Query -> forall r, incoming [internal & r] -> outgoing [internal & r] -> Prefix ->
                          @RoutingInformation trackingAttributes' ->
                          @RoutingInformation trackingAttributes' ->
@@ -680,7 +691,7 @@ Section BGPV.
 
     Definition listSearch {A} (s:Space A) : list A :=
       match search s with solution a => [a] | _ => [] end.
-   
+    
     Lemma searchOk : forall {A} {s:Space A} {a a':A} (t:list A), listSearch s = a'::t -> List.In a (listSearch s) -> ⟦ s ⟧ a : Prop.
       unfold listSearch.
       intros.
@@ -717,6 +728,7 @@ Section BGPV.
          cbn.
          intuition.
     Qed.
+
   End ListSearch.
 
   Definition fastPolicyDec' (Q:Query) :
@@ -844,9 +856,37 @@ Section BGPV.
   | onlyNotAvailable : incoming [internal & r] -> Routing r
   | allAvailable (ri:router internal) (re:router external) : neighbor ri re -> Routing r.
 
+  Instance eqDecRouting : forall (r: router internal), eqDec (Routing r).
+    constructor.
+    intros.
+    destruct a, a';
+      (* cases where constructors don't match *)
+      try (right; intro H'; inversion H'; fail).
+    - destruct i, i0;
+        (* again, constructors don't match *)
+        try (right; intro H'; inversion H'; fail).
+      + left. reflexivity.
+      + assert ({s = s0} + {s <> s0}) by apply eqDecSigT.
+        destruct H.
+        * subst. left. reflexivity.
+        * right. intro H. inversion H. contradiction.
+    - assert ({re = re0} + {re <> re0}) by apply eqDecRouters.
+      assert ({ri = ri0} + {ri <> ri0}) by apply eqDecRouters.
+      destruct H, H0;
+        (* cases where one router <> the other router *)
+        try (right; intro H'; inversion H'; crush; fail).
+      subst.
+      assert ({n0 = n} + {n0 <> n}) by apply eqDecNeighbor.
+      destruct H.
+      + subst. left. reflexivity.
+      + right. intro H'. inversion H'. crush.
+  Defined.
+
   Arguments onlyNotAvailable [_] _.
   Arguments allAvailable [_] _ _ _.
 
+  (* Eumerates all attributes that can be forwarded in the initial network,
+   * with correct tracking *)
   Definition routingToTracking r p (R:Routing r) : Space (TrackingOk r p).
     refine (match R with
     | onlyNotAvailable s => _
@@ -862,7 +902,13 @@ Section BGPV.
       inline_all.
       apply (transmitIsForwardable r ri re n p a0).
   Defined.      
-
+  
+  (* Corresponds to INR (initial network reduction) in paper: 
+   * enumerating set of router states based on updates that can be forwarded
+   * in the initial network. Given an internal router r, an outgoing neighbor 
+   * from r, and two paths to r (the argument), verify that packets fowarded 
+   * to r on either of these two paths fulfill the policy specified in the 
+   * query. See fig. 6 in the OOPSLA '16 paper *)
   Definition bgpvCore (Q:Query) (v:{r:router internal & (outgoing [internal & r] * Routing r * Routing r) % type}) :
     list {r:router internal & (incoming [internal & r] * outgoing [internal & r] * Prefix * 
                      @RoutingInformation trackingAttributes' * 
@@ -883,22 +929,21 @@ Section BGPV.
     refine [r & (s, d, p, ai, ai', al', al, ao)].
   Defined.
 
+  Context `{M:@Minus BA}.
   
-  Definition optionToSpace `{Basic} {A} (o:option A) : Space A :=
-    match o with None => empty | Some a => single a end.
-
-  Context `{BA':Basic}.
-  Context `{PS':@Search BA'}.
- 
   Arguments head {_} _ /.
 
   Variable bgpvScheduler : forall Q v, {o | o = listSearch (bind v (compose optionToSpace (compose head (bgpvCore Q))))}.
+        
+  Instance eqDecRoutingPairs :
+    eqDec {r : router internal
+               & (outgoing [internal & r] * Routing r * Routing r)%type}.
+  Proof. apply eqDecSigT. Defined.
 
-  (*
-  Variable parallelSearch : forall A B, (A -> option B) * Space A -> option B.
-  Arguments parallelSearch [_ _] _.
-  Variable parallelSearchOk : forall A B (f:A -> option B) S, parallelSearch (f,S) = search (bind S (compose optionToSpace f)).
-  *)
+  (* Given spaces v, v' of routing pairs, apply bgpvCore to v \ v'. *)
+  Definition incBgpvScheduler
+             (Q: Query) (v v': Space {r : router internal & (outgoing [internal & r] * Routing r * Routing r)%type}) :=
+    bgpvScheduler Q (minus v v').
 
   Instance fullRouting `{Basic} r : Full (Routing r).
     simple refine {|full := _ |}.
@@ -935,9 +980,9 @@ Section BGPV.
   Instance fullSigT {A B} `{Full A} `{forall a:A, Full (B a)} : Full {a : A & B a}.
     refine {|
       full := bind (full A) (fun a => 
-              bind (full (B a)) (fun b =>
-              single [a & b]))
-    |}.
+                bind (full (B a)) (fun b =>
+                  single [a & b]))
+      |}.
   Proof.
     apply fullForAll.
     intros [a b].
@@ -948,13 +993,13 @@ Section BGPV.
     apply singleOk.
     reflexivity.
   Defined.
-
+    
   Instance fullProd {A B} `{S:Basic} `{@Full S A} `{@Full S B} : @Full S (A * B).
-    refine {|
-      full := bind (full A) (fun a => 
+  refine {|
+    full := bind (full A) (fun a => 
               bind (full B) (fun b =>
-              single (a, b)))
-    |}.
+                single (a, b)))
+  |}.
   Proof.
     apply fullForAll.
     intros [a b].
@@ -965,7 +1010,7 @@ Section BGPV.
     apply singleOk.
     reflexivity.
   Defined.
-
+    
   Definition parallelBGPV (Q:Query) := let ' exist _ v _ := bgpvScheduler Q (full _) in v.
  
   Definition pickOne `{S:Basic} `{SS:@Search S} {A} (s:@Space S A) : @Space S A := 
@@ -1027,7 +1072,7 @@ Section BGPV.
     refine ((fun e'' => _) e'); clear e e'; rename e'' into e.
     destruct e; [|intuition;fail].
     exfalso.
-    apply H1; clear H1.
+    apply H; clear H.
     unfold trackingOkToRouting.
     Require Import SymbolicExecution.
     branch; cbn.
@@ -1176,7 +1221,7 @@ Section BGPV.
         assert (forall {A B} `{S:Basic} `{@Search S} `{@Full S A} {f:A->Space B} {a:A}, listSearch (bind (full A) f) = [] -> forall b, ~⟦ f a ⟧ b) as searchOk''. {
           clear -bindFullOk.
           intros.
-          rename H into e.
+          rename H1 into e.
           eapply searchOk' in e.
           eapply bindFullOk with (a:=a) in e.
           apply e.
@@ -1503,3 +1548,96 @@ Section BGPV.
     apply fastPolicyImpliesPolicy; trivial.
   Defined.
 End BGPV.
+
+Section Incrementalization.
+  Context `{BA:Basic}.
+  Context `{PS:@Search BA}.
+  Context `{M:@Minus BA}.
+  
+  Context `{plainPrefix : PrefixClass}.
+  Context `{fullPrefix : @Full BA Prefix}.
+
+  Context `{plainAttributes : PathAttributesClass}.
+  Context `{eqDecPathAttributes : eqDec PathAttributes}.
+  Context `{fullPathAttributes : @Full BA PathAttributes}.
+
+  Variable Query : Type.
+  Variable denoteQuery :
+    forall (t: SingleASTopologyClass) (c: @SingleASConfigurationClass _ _ t),
+    Query -> forall r, incoming [internal & r] -> outgoing [internal & r] -> Prefix ->
+    @RoutingInformation trackingAttributes' ->
+    @RoutingInformation trackingAttributes' ->
+    @RoutingInformation trackingAttributes' ->
+    @RoutingInformation trackingAttributes' -> bool.
+
+  Arguments head {_} _ /.
+
+  Definition outgoingConn (t : SingleASTopologyClass) (r: @router t internal) : Type.
+    refine (outgoing _).
+    refine [_ & _].
+    refine r.
+  Defined.
+
+  Definition routingPair (t: SingleASTopologyClass) : Type :=
+    {r: @router t internal & (outgoingConn t r * @Routing t r * @Routing t r)%type}.
+
+  (* this is the hard part: must take a routing pair from one topology and
+   * translate to another topology *)
+  (* Desired bind pseudocode: 
+     We want to keep any paths that are unchanged in the new
+       config, drop ones that have changed
+
+    Definition bindChangedPaths 
+      (v: {r : router internal 
+           & (outgoing [internal & r] * Routing r * Routing r)%type}) :=
+       if r is not present in the new configuration
+          return an empty space
+       else if the outgoing neighbor is not present
+          or not a neighbor in the new config
+          return an empty space
+       else if the routings involve an internal router that is not
+          present in the new config (what about external routers? I suppose
+          we could check if they are still neighbors in the new config too)
+          return an empty space
+       else
+         return a singleton where we translate r, the outgoing neighbor,
+           and the two routings into ones from the new topology (using
+           the constructors)
+   *)
+  Definition transBind 
+             (t1 t2 : SingleASTopologyClass)
+             (c1 : @SingleASConfigurationClass _ _ t1)
+             (c2 : @SingleASConfigurationClass _ _ t2)
+             (v : routingPair t1) : Space (routingPair t2).
+    refine empty. (* give up for now, just to get the types working *)
+  Defined.
+  
+  Variable bgpvScheduler :
+    forall (t : SingleASTopologyClass)
+      (c : @SingleASConfigurationClass _ _ t)
+      (Q : Query)
+      (v : Space (routingPair t)),
+      {o | o =
+           listSearch (bind v (compose optionToSpace (compose head
+             (@bgpvCore _ _ _ _ _ _ t c Query (denoteQuery t c) Q))))}.
+
+  Definition expandedIncBgpvScheduler
+             (t : SingleASTopologyClass)
+             (c : @SingleASConfigurationClass _ _ t)
+             (Q : Query)
+             (s' s : Space (routingPair t))
+    := @incBgpvScheduler _ _ _ _ _ _
+                        t c _ (denoteQuery t c) _ (bgpvScheduler t c) Q s' s.
+
+  (* the incremental BGPV we want: translates s from the old topology to the
+   * new one, then subtracts from s' *)
+  Definition heteroIncBgpvScheduler
+             (t1 t2 : SingleASTopologyClass)
+             (c1 : @SingleASConfigurationClass _ _ t1)
+             (c2: @SingleASConfigurationClass _ _ t2)
+             (Q : Query)
+             (s' : Space (routingPair t2))
+             (s : Space (routingPair t1))
+    := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2)).
+
+End Incrementalization.
