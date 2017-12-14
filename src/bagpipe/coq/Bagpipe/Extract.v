@@ -17,6 +17,8 @@ Require Import Equality.
 Require Import SymbolicExecution.
 Require Import Graph.
 Require Import SpaceSearch.Space.Basic.
+Require Import SpaceSearch.Space.Minus.
+Require Import SpaceSearch.Search.Incremental.
 Require Import SpaceSearch.Search.Precise.
 Require Import SpaceSearch.Backends.Rosette.Unquantified.
 Require Import SingleAS.
@@ -77,7 +79,7 @@ Section BGPV.
   Parameter AS : Type.
   Parameter BGPAttributes : Type.
 
-  Variable setup : AS.
+(*  Variable setup : AS. *)
 
   Parameter eqDecideBGPAttributes : forall (r r':BGPAttributes), decide (r = r').
   Parameter leDecBGPAttributes : BGPAttributes -> BGPAttributes -> bool.
@@ -98,28 +100,30 @@ Section BGPV.
   Defined.
 
   Parameter fullBGPAttributes : AS -> @Space solver BGPAttributes.
-  Axiom denoteFullBGPAttributesOk : ⟦ fullBGPAttributes setup ⟧ = Full_set _.
-  Instance FullBGPAttributes : @Full solver BGPAttributes := {|
+  Axiom denoteFullBGPAttributesOk : forall (setup : AS), 
+      ⟦ fullBGPAttributes setup ⟧ = Full_set _.
+  Instance FullBGPAttributes (setup : AS) : @Full solver BGPAttributes := {|
     full := fullBGPAttributes setup;
-    denoteFullOk := denoteFullBGPAttributesOk
+    denoteFullOk := denoteFullBGPAttributesOk setup
   |}.
 
   Parameter internals : AS -> list IP.
-  Parameter neighbors : {ri | In ri (internals setup)} -> list IP.
+  Parameter neighbors : forall (setup : AS), {ri | In ri (internals setup)} -> list IP.
 
-  Definition bagpipeRouter (t:RouterType) := 
+  Definition bagpipeRouter (setup:AS) (t:RouterType) := 
     match t with
     | internal => {ri | In ri (internals setup)}
-    | external => {re | exists riOk, In re (neighbors riOk)} 
+    | external => {re | exists riOk, In re (neighbors setup riOk)} 
     end.
 
-  Definition bagpipeNeighbor (ri:bagpipeRouter internal) (re:bagpipeRouter external) : Type.
+  Definition bagpipeNeighbor (setup:AS) (ri:bagpipeRouter setup internal) (re:bagpipeRouter setup external) : Type.
     cbn in *.
     destruct re as [re ?].
-    exact (In re (neighbors ri)).
+    exact (In re (neighbors setup ri)).
   Defined.
 
-  Instance fullRouter `{Basic} : forall t, Full (bagpipeRouter t).
+  Instance fullRouter `{Basic} : forall setup t, Full (bagpipeRouter setup t).
+    intro setup.
     intros []; cbn.
     - refine {| full := bind (full (A := {a | In a (internals setup)})) single |}.
       apply fullForAll.
@@ -133,7 +137,7 @@ Section BGPV.
       + refine (bind (full (A:={a | In a (internals setup)})) _).
         apply fullList.
         intros ri.
-        refine (bind (full (A:={a | In a (neighbors ri)})) _).
+        refine (bind (full (A:={a | In a (neighbors setup ri)})) _).
         apply fullList.
         intros [re ?].
         apply single.
@@ -154,9 +158,9 @@ Section BGPV.
     apply fullList.
   Defined.
 
-  Instance fullNeighbors `{Basic} : forall s, Full {d : bagpipeRouter external & bagpipeNeighbor s d}.
-    intro r.
-    simple refine {| full := bind (full (A:={a | In a (neighbors r)})) _ |}.
+  Instance fullNeighbors `{Basic} : forall setup s, Full {d : bagpipeRouter setup external & bagpipeNeighbor setup s d}.
+    intros setup r.
+    simple refine {| full := bind (full (A:={a | In a (neighbors setup r)})) _ |}.
     apply fullList.
     {
       cbn in *.
@@ -177,13 +181,14 @@ Section BGPV.
     reflexivity.
   Defined.
 
-  Instance fullNeighbor `{Basic} : forall s d, Full (bagpipeNeighbor s d).
+  Instance fullNeighbor `{Basic} : forall setup s d, Full (bagpipeNeighbor setup s d).
+    intro setup.
     unfold bagpipeNeighbor.
     cbn.
     intros riOk [re reOk'].
     cbn.
     simple refine {| full := _ |}.
-    - destruct (@in_dec _ eqDecide re (neighbors riOk)).
+    - destruct (@in_dec _ eqDecide re (neighbors setup riOk)).
       + apply single.
         trivial.
       + apply empty.
@@ -197,10 +202,10 @@ Section BGPV.
       + intuition.
   Defined.
 
-  Instance bagpipeTopology : SingleASTopologyClass. 
+  Instance bagpipeTopology (setup : AS) : SingleASTopologyClass. 
     refine {|
-      router := bagpipeRouter;
-      neighbor := bagpipeNeighbor;
+      router := bagpipeRouter setup;
+      neighbor := bagpipeNeighbor setup;
       SingleASUninterpretedState := unit;
       singleASInitialUninterpretedState := tt
     |}.
@@ -218,18 +223,19 @@ Section BGPV.
  
   Existing Instance singleASTopology.
 
-  Parameter denoteImport : forall r:router internal, incoming [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
-  Parameter denoteExport : forall r:router internal, outgoing [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
-  Parameter bestIncomingBGP : forall r,  (incoming r -> RoutingInformation) -> incoming r.
-  Parameter bestIncomingBGPBest : forall r f i, leDecRoutingInformation (f i) (f (bestIncomingBGP r f)) = true.
+  Parameter denoteImport : forall topology (r:@router topology internal), incoming [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
+  Parameter denoteExport : forall topology (r:@router topology internal), outgoing [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
+  Parameter bestIncomingBGP : forall topology r, (@incoming topology r -> RoutingInformation) -> @incoming topology r.
+  Parameter bestIncomingBGPBest : forall topology r f i, leDecRoutingInformation (f i) (f (bestIncomingBGP topology r f)) = true.
 
   Parameter RacketRouter : Type.
   Parameter racketRouterExternal : IP -> RacketRouter.
   Parameter racketRouterInternal : IP -> RacketRouter.
   Parameter racketRouterInjected : RacketRouter.
 
-  Definition rackifyRouter : Router -> RacketRouter.
-    intros [t r].
+  Definition rackifyRouter : forall (setup:AS), 
+      @Router (@singleASTopology (@bagpipeTopology setup)) -> RacketRouter.
+    intros setup [t r].
     destruct t.
     + exact (racketRouterInternal (proj1_sig r)).
     + exact (racketRouterExternal (proj1_sig r)).
@@ -239,22 +245,22 @@ Section BGPV.
   Parameter racketNil : forall {A}, RacketList A.
   Parameter racketSnoc : forall {A}, RacketList A -> A -> RacketList A.
   
-  Fixpoint rackifyPath (path:Tracking.Path) : RacketList RacketRouter :=
+  Fixpoint rackifyPath (setup:AS) (path:Tracking.Path) : RacketList RacketRouter :=
     match path with
-    | Tracking.hop _ r _ path => racketSnoc (rackifyPath path) (rackifyRouter r)
-    | Tracking.start r => racketSnoc racketNil (rackifyRouter r)
+    | Tracking.hop _ r _ path => racketSnoc (rackifyPath setup path) (rackifyRouter setup r)
+    | Tracking.start r => racketSnoc racketNil (rackifyRouter setup r)
     end.
  
   Parameter RacketRoutingInformation : Type.
   Parameter racketRoutingInformationNotAvailable : RacketRoutingInformation.
   Parameter racketRoutingInformationAvailable : BGPAttributes -> BGPAttributes -> RacketList RacketRouter -> RacketRoutingInformation.
 
-  Definition rackifyRoutingInformation (a:@RoutingInformation trackingAttributes') : RacketRoutingInformation :=
+  Definition rackifyRoutingInformation (setup:AS) (a:@RoutingInformation (@trackingAttributes' _ (bagpipeTopology setup))) : RacketRoutingInformation :=
     match a with
     | notAvailable => racketRoutingInformationNotAvailable 
     | available a => racketRoutingInformationAvailable (Tracking.original a) 
                                                        (Tracking.current a)
-                                                       (rackifyPath (Tracking.path a))
+                                                       (rackifyPath setup (Tracking.path a))
     end.
 
   Parameter Query : Type.
@@ -262,44 +268,74 @@ Section BGPV.
                          RacketRoutingInformation -> RacketRoutingInformation ->
                          RacketRoutingInformation -> RacketRoutingInformation -> bool.
 
-  Definition denoteQuery (q:Query) r (i:incoming [internal & r]) (o:outgoing [internal & r]) (p:Prefix)
+  Definition denoteQuery (setup : AS) (q:Query) r (i:@incoming (@singleASTopology (bagpipeTopology setup)) [internal & r]) (o:@outgoing (@singleASTopology (bagpipeTopology setup)) [internal & r]) (p:Prefix)
                          (ai:@RoutingInformation trackingAttributes')
                          (al':@RoutingInformation trackingAttributes')
                          (al:@RoutingInformation trackingAttributes')
                          (ao:@RoutingInformation trackingAttributes') : bool :=
-    racketDenoteQuery q (rackifyRouter [internal & r])
-      (match i with injected => racketRouterInjected | received i => rackifyRouter (projT1 i) end)
-      (rackifyRouter (projT1 o)) p
-      (rackifyRoutingInformation ai) (rackifyRoutingInformation al')
-      (rackifyRoutingInformation al) (rackifyRoutingInformation ao).
+    racketDenoteQuery q (rackifyRouter setup [internal & r])
+      (match i with injected => racketRouterInjected | received i => rackifyRouter setup (projT1 i) end)
+      (rackifyRouter setup (projT1 o)) p
+      (rackifyRoutingInformation setup ai) (rackifyRoutingInformation setup al')
+      (rackifyRoutingInformation setup al) (rackifyRoutingInformation setup ao).
  
-  Instance bagpipeConfiguration : SingleASConfigurationClass.
+  Instance bagpipeConfiguration (setup : AS) : @SingleASConfigurationClass _ _ (bagpipeTopology setup).
     refine {|
-      intImport := denoteImport;
-      intExport r i := denoteExport r;
-      bestIncoming' := bestIncomingBGP
+      intImport := denoteImport (bagpipeTopology setup);
+      intExport r i := denoteExport (bagpipeTopology setup) r;
+      bestIncoming' := bestIncomingBGP (@singleASTopology (bagpipeTopology setup))
     |}.
   Proof.
     apply bestIncomingBGPBest.
   Defined.
 
-  Definition bgpvCore' := @bgpvCore solver _ _ _ _ _ _ _ Query denoteQuery.
+  Definition bgpvCore' (setup : AS) := @bgpvCore solver _ _ _ _ (FullBGPAttributes setup) (bagpipeTopology setup) _ Query (denoteQuery setup).
 
   Definition listBasedSearch {A} := @BGPV.listSearch _ listSearch A.
   Definition listBasedBind {A B} := @bind listSpace A B.
 
   Arguments head {_} _ /.
 
-  Parameter bgpvScheduler : forall Q v, {o | o = listBasedSearch (listBasedBind v (compose optionToSpace (compose head (bgpvCore' Q))))}.
+  Parameter bgpvScheduler : forall setup Q v, {o | o = listBasedSearch (listBasedBind v (compose optionToSpace (compose head (bgpvCore' setup Q))))}.
 
-  Definition bgpvAll := @parallelBGPV solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
-  Definition bgpvImport := @parallelBGPVImport solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
-  Definition bgpvExport := @parallelBGPVExport solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
-  Definition bgpvPreference := @parallelBGPVPreference solver _ _ _ _ _ _ _ _ _ Query denoteQuery _ listSearch bgpvScheduler.
+  Definition bgpvAll (setup: AS) := @parallelBGPV solver _ _ _ _ _ _ _ _ _ Query (denoteQuery setup) _ listSearch (bgpvScheduler setup).
+  Definition bgpvImport (setup : AS) := @parallelBGPVImport solver _ _ _ _ _ _ _ _ _ Query (denoteQuery setup) _ listSearch (bgpvScheduler setup).
+  Definition bgpvExport (setup : AS) := @parallelBGPVExport solver _ _ _ _ _ _ _ _ _ Query (denoteQuery setup) _ listSearch (bgpvScheduler setup).
+  Definition bgpvPreference (setup : AS) := @parallelBGPVPreference solver _ _ _ _ _ _ _ _ _ Query (denoteQuery setup) _ listSearch (bgpvScheduler setup).
+
+
+  Definition incBgpvAll (setup1 setup2 : AS) 
+    : Query -> list
+                 {r : (@router (bagpipeTopology setup2) internal) &
+                       ((@incoming 
+                           (@singleASTopology (bagpipeTopology setup2)) 
+                           [internal & r])
+                        * (@outgoing 
+                             (@singleASTopology (bagpipeTopology setup2))
+                             [internal & r]) 
+                        * Prefix 
+                        * @RoutingInformation 
+                            (@trackingAttributes' bgpAttributes (bagpipeTopology setup2)) 
+                        * @RoutingInformation 
+                            (@trackingAttributes' bgpAttributes (bagpipeTopology setup2))
+                        * @RoutingInformation 
+                            (@trackingAttributes' bgpAttributes (bagpipeTopology setup2))
+                        * @RoutingInformation 
+                            (@trackingAttributes' bgpAttributes (bagpipeTopology setup2))
+                        * @RoutingInformation 
+                            (@trackingAttributes' bgpAttributes (bagpipeTopology setup2)))%type}.
+    refine (@parallelIncBgpv solver _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _).
+    * refine listMinus.
+    * refine (bagpipeConfiguration setup1).
+    * unfold Main.BGPV.bgpvScheduler.
+      refine (bgpvScheduler setup2).
+    * intros. apply fullRouter.
+    * intros. apply fullNeighbors.
+  Defined.
 
   Parameter ExecutionMode : Type.
   Parameter elimExecutionMode : forall {A}, Mode -> A -> A -> A -> A -> A.
-  Definition bgpv m := elimExecutionMode m bgpvImport bgpvExport bgpvPreference bgpvAll. 
+  Definition bgpv setup m := elimExecutionMode m (bgpvImport setup) (bgpvExport setup) (bgpvPreference setup) (bgpvAll setup). 
 End BGPV.
 
 Extract Constant Query => "__".
