@@ -1561,18 +1561,19 @@ Section Incrementalization.
   Context `{plainAttributes : PathAttributesClass}.
   Context `{eqDecPathAttributes : eqDec PathAttributes}.
   Context `{fullPathAttributes : @Full BA PathAttributes}.
-
+(*
   Context {fullNeighbors : forall {S:Basic} t s, @Full S {d : @router t external & neighbor s d}}.
   Context {fullRouters : forall {S:Basic} topology t, @Full S (@router topology t)}.
+*)
 
   Variable Query : Type.
-  Variable denoteQuery :
+(*  Variable denoteQuery :
     forall (t: SingleASTopologyClass) (c: @SingleASConfigurationClass _ _ t),
     Query -> forall r, incoming [internal & r] -> outgoing [internal & r] -> Prefix ->
     @RoutingInformation trackingAttributes' ->
     @RoutingInformation trackingAttributes' ->
     @RoutingInformation trackingAttributes' ->
-    @RoutingInformation trackingAttributes' -> bool.
+    @RoutingInformation trackingAttributes' -> bool.*)
 
   Definition outgoingConn (t : SingleASTopologyClass) (r: @router t internal) : Type.
     refine (outgoing _).
@@ -1585,8 +1586,10 @@ Section Incrementalization.
 
   Instance FullRoutingPair {S : Basic} 
            (t : SingleASTopologyClass) 
-           (c : SingleASConfigurationClass) : 
-    @Full S (routingPair t c).
+           (c : SingleASConfigurationClass) 
+           (fullRouters : forall (S' : Basic) t', @Full S' (@router t t'))
+           (fullNeighbors : forall (S' : Basic) s, @Full S' {d : @router t external & neighbor s d})
+    : @Full S (routingPair t c).
   Proof.
     unfold routingPair.
     eapply fullSigT.
@@ -1598,7 +1601,7 @@ Section Incrementalization.
     apply fullRouting.
     Unshelve.
     apply fullOutgoing.
-    apply fullRouting.
+    apply fullRouting.    
   Defined.
 
   Context `{BA':Basic}.
@@ -1607,14 +1610,14 @@ Section Incrementalization.
 
   Arguments head {_} _ /.
   
-  Variable bgpvScheduler :
-    forall (t : SingleASTopologyClass)
-      (c : @SingleASConfigurationClass _ _ t)
+(*  Variable bgpvScheduler (t : SingleASTopologyClass) (c : @SingleASConfigurationClass _ _ t) :
+    forall
       (Q : Query)
       (v : Space (routingPair t c)),
       {o | o =
            listSearch (bind v (compose optionToSpace (compose head
              (@bgpvCore BA PS _ _ _ _ t c Query (denoteQuery t c) Q))))}.
+*)
 
   (* this is the hard part: must take a routing pair from one topology and
    * translate to another topology *)
@@ -1647,13 +1650,33 @@ Section Incrementalization.
     refine empty. (* give up for now, just to get the types working *)
   Defined.
 
+  Definition denoteQuery (t : SingleASTopologyClass) (c : @SingleASConfigurationClass _ _ t) : Type := 
+    Query -> forall r, incoming [internal & r] -> 
+                       outgoing [internal & r] -> 
+                       Prefix ->
+                       @RoutingInformation (@trackingAttributes' _ t) ->
+                       @RoutingInformation (@trackingAttributes' _ t) ->
+                       @RoutingInformation (@trackingAttributes' _ t) ->
+                       @RoutingInformation (@trackingAttributes' _ t) -> 
+                       bool.
+
+  Definition bgpvScheduler (t : SingleASTopologyClass) (c : @SingleASConfigurationClass _ _ t) (dq : denoteQuery t c) : Type := 
+    forall (Q : Query) (v : Space (routingPair t c)),
+      {o | o = listSearch (bind v (compose optionToSpace 
+                                           (compose head 
+                                                    (@bgpvCore BA PS _ _ _ _ 
+                                                               t c Query 
+                                                               dq Q))))}.
+
   Definition expandedIncBgpvScheduler
              (t : SingleASTopologyClass)
              (c : @SingleASConfigurationClass _ _ t)
              (Q : Query)
              (s' s : Space (routingPair t c))
+             (dq : denoteQuery t c)
+             (bgpvS : bgpvScheduler t c dq)
     := @incBgpvScheduler BA PS _ _ _ _
-                         t c _ (denoteQuery t c) BA' PS' M (bgpvScheduler t c) Q s' s.
+                         t c _ dq BA' PS' M bgpvS Q s' s.
 
   (* the incremental BGPV we want: translates s from the old topology to the
    * new one, then subtracts from s' *)
@@ -1664,12 +1687,23 @@ Section Incrementalization.
              (Q : Query)
              (s' : Space (routingPair t2 c2))
              (s : Space (routingPair t1 c1))
-    := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2)).
+             (dq : denoteQuery t2 c2)
+             (bgpvS : bgpvScheduler t2 c2 dq)
+    := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2)) 
+                                dq bgpvS.
 
   (* Based on parallelBGPV and the like *)
   Definition parallelIncBgpv (t1 t2 : SingleASTopologyClass) 
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
+             (dq : denoteQuery t2 c2)
+             (bgpvS : bgpvScheduler t2 c2 dq)
+             (fullRouters1 : forall (S' : Basic) (t' : RouterType), Full (@router t1 t'))
+             (fullRouters2 : forall (S' : Basic) (t' : RouterType), Full (@router t2 t'))
+             (fullNeighbors1 : forall (S' : Basic) s, 
+                 @Full S' {d : @router t1 external & neighbor s d})
+             (fullNeighbors2 : forall (S' : Basic) s, 
+                 @Full S' {d : @router t2 external & neighbor s d})
              (Q : Query)
              : list
                  {r : router internal &
@@ -1682,7 +1716,8 @@ Section Incrementalization.
     := 
       let ' exist _ v _ := 
           heteroIncBgpvScheduler t1 t2 c1 c2 Q 
-              (@full BA' (routingPair t2 c2) (@FullRoutingPair BA' t2 c2)) 
-              (@full BA' (routingPair t1 c1) (@FullRoutingPair BA' t1 c1)) in v.
+              (@full BA' (routingPair t2 c2) (@FullRoutingPair BA' t2 c2 _ _)) 
+              (@full BA' (routingPair t1 c1) (@FullRoutingPair BA' t1 c1 _ _)) 
+              dq bgpvS in v.
 
 End Incrementalization.
