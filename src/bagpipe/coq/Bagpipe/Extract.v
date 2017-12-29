@@ -223,6 +223,36 @@ Section BGPV.
  
   Existing Instance singleASTopology.
 
+  Definition refined_internals (setup : AS) : list { ri : IP | In ri (internals setup) }.
+    induction (internals setup).
+    * refine [].
+    * assert (In a (a :: l)) as H by intuition.
+      assert (forall i, In i l -> In i (a :: l)) as H' by intuition.
+      assert (forall (r' : {ri : IP | In ri l}), {ri : IP | In ri (a :: l)}) as H''.
+      + intro r'. destruct r'. exists x. apply H'; assumption.
+      + refine (_ :: _).
+        - exists a; assumption.
+        - refine (map H'' IHl).
+  Defined.
+
+  Definition allNeighbors (setup : AS) : list IP.
+    refine (flat_map _ (refined_internals setup)).
+    refine (neighbors setup).
+  Defined.
+
+  Lemma internalNeighborExists : forall (setup : AS) (re : IP), 
+      In re (allNeighbors setup) 
+      -> exists (riOk : {ri : IP | In ri (internals setup) }), In re (neighbors setup riOk).
+  Proof.
+    intros setup re H.
+    unfold allNeighbors in H.
+    apply in_flat_map in H.
+    destruct H as [ri H'].
+    destruct H' as [H' H''].
+    exists ri.
+    assumption.
+  Qed.
+
   Definition bagpipeAdapter (setup1 setup2 : AS) : routerAdapter (bagpipeTopology setup1) (bagpipeTopology setup2).
     unfold routerAdapter.
     intro rt.
@@ -230,18 +260,23 @@ Section BGPV.
     unfold router in *.
     unfold bagpipeTopology in *.
     unfold bagpipeRouter in *.
+    assert (forall x y : IP, { x = y } + { x <> y }) as eqIP by apply eqDecIP.
     destruct rt.
+    (* internal router: can just check if it's in the list of routers *)
     * destruct r as [ip H].
-      assert (forall x y : IP, { x = y } + { x <> y }) as H' by apply eqDecIP.
-      destruct (in_dec H' ip (internals setup2)) as [Hin | Hout].
+      destruct (in_dec eqIP ip (internals setup2)) as [Hin | Hout].
       + refine (Some _).
         exists ip; assumption.
       + refine None.
+    (* external router: enumerate to check if there's an internal router that has this
+       ip as a neighbor *)
     * destruct r as [re H].
-      (* does there exist an internal router for which re is a neighbor?
-       * should it be the same as in setup1?
-       * should we bother with this case/only handle internal routers? *)
-      refine None.
+      destruct (in_dec eqIP re (allNeighbors setup2)) as [Hin | Hout].
+      + apply internalNeighborExists in Hin.
+        refine (Some _).
+        exists re.
+        assumption.
+      + refine None.
   Defined.
 
   Parameter denoteImport : forall topology (r:@router topology internal), incoming [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
