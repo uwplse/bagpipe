@@ -1619,6 +1619,12 @@ Section Incrementalization.
              (@bgpvCore BA PS _ _ _ _ t c Query (denoteQuery t c) Q))))}.
 *)
 
+  (* Because the representations of routers depend on the AS topology and configuration,
+   * we need to have an implementation-specific adapter to convert a representation in one
+   * AS to another in order to determine whether we can translate a routing pair. *)
+  Definition routerAdapter (t1 : SingleASTopologyClass) (t2 : SingleASTopologyClass) : Type := forall (rt: RouterType), @router t1 rt -> option (@router t2 rt).
+
+
   (* this is the hard part: must take a routing pair from one topology and
    * translate to another topology *)
   (* Desired bind pseudocode: 
@@ -1646,7 +1652,17 @@ Section Incrementalization.
              (t1 t2 : SingleASTopologyClass)
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
+             (adapter : routerAdapter t1 t2)
              (v : routingPair t1 c1) : @Space BA' (routingPair t2 c2).
+    unfold routingPair in *.
+    destruct v as [r p].
+    destruct p as [[conn routing1] routing2].
+    unfold outgoingConn in *.
+    unfold routerAdapter in adapter.
+    
+    
+    (* if r is in t2/c2 ... enumerate rounters in t2 and check for r *)
+
     refine empty. (* give up for now, just to get the types working *)
   Defined.
 
@@ -1684,18 +1700,20 @@ Section Incrementalization.
              (t1 t2 : SingleASTopologyClass)
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2: @SingleASConfigurationClass _ _ t2)
+             (adapter : routerAdapter t1 t2)
              (Q : Query)
              (s' : Space (routingPair t2 c2))
              (s : Space (routingPair t1 c1))
              (dq : denoteQuery t2 c2)
              (bgpvS : bgpvScheduler t2 c2 dq)
-    := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2)) 
+    := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2 adapter)) 
                                 dq bgpvS.
 
   (* Based on parallelBGPV and the like *)
   Definition parallelIncBgpv (t1 t2 : SingleASTopologyClass) 
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
+             (adapter : routerAdapter t1 t2)
              (dq : denoteQuery t2 c2)
              (bgpvS : bgpvScheduler t2 c2 dq)
              (fullRouters1 : forall (S' : Basic) (t' : RouterType), Full (@router t1 t'))
@@ -1715,7 +1733,7 @@ Section Incrementalization.
                        * (@RoutingInformation (@trackingAttributes' _ t2)))%type}
     := 
       let ' exist _ v _ := 
-          heteroIncBgpvScheduler t1 t2 c1 c2 Q 
+          heteroIncBgpvScheduler t1 t2 c1 c2 adapter Q 
               (@full BA' (routingPair t2 c2) (@FullRoutingPair BA' t2 c2 _ _)) 
               (@full BA' (routingPair t1 c1) (@FullRoutingPair BA' t1 c1 _ _)) 
               dq bgpvS in v.

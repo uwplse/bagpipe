@@ -223,6 +223,27 @@ Section BGPV.
  
   Existing Instance singleASTopology.
 
+  Definition bagpipeAdapter (setup1 setup2 : AS) : routerAdapter (bagpipeTopology setup1) (bagpipeTopology setup2).
+    unfold routerAdapter.
+    intro rt.
+    intro r.
+    unfold router in *.
+    unfold bagpipeTopology in *.
+    unfold bagpipeRouter in *.
+    destruct rt.
+    * destruct r as [ip H].
+      assert (forall x y : IP, { x = y } + { x <> y }) as H' by apply eqDecIP.
+      destruct (in_dec H' ip (internals setup2)) as [Hin | Hout].
+      + refine (Some _).
+        exists ip; assumption.
+      + refine None.
+    * destruct r as [re H].
+      (* does there exist an internal router for which re is a neighbor?
+       * should it be the same as in setup1?
+       * should we bother with this case/only handle internal routers? *)
+      refine None.
+  Defined.
+
   Parameter denoteImport : forall topology (r:@router topology internal), incoming [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
   Parameter denoteExport : forall topology (r:@router topology internal), outgoing [internal & r] -> Prefix -> PathAttributes -> RoutingInformation.
   Parameter bestIncomingBGP : forall topology r, (@incoming topology r -> RoutingInformation) -> @incoming topology r.
@@ -324,9 +345,10 @@ Section BGPV.
                             (@trackingAttributes' bgpAttributes (bagpipeTopology setup2))
                         * @RoutingInformation 
                             (@trackingAttributes' bgpAttributes (bagpipeTopology setup2)))%type}.
-    refine (@parallelIncBgpv solver _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _).
+    refine (@parallelIncBgpv solver _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _).
     * refine listMinus.
     * refine (bagpipeConfiguration setup1).
+    * refine (bagpipeAdapter setup1 setup2).
     * unfold Main.BGPV.bgpvScheduler.
       refine (bgpvScheduler setup2).
     * intros. apply fullRouter.
