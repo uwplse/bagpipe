@@ -1648,6 +1648,101 @@ Section Incrementalization.
            and the two routings into ones from the new topology (using
            the constructors)
    *)
+  Definition findConnection
+             (t2 : SingleASTopologyClass)
+             (rt : RouterType)
+             (dt : RouterType)
+             (r' : @router t2 rt)
+             (d' : @router t2 dt)
+             : option (@connection (@singleASTopology t2) [rt & r'] [dt & d']).
+    destruct (@enumerate (@edge (@Router (@singleASTopology t2)) 
+                                    (@connections (@singleASTopology t2)) 
+                                    [rt & r'] 
+                                    [dt & d']) 
+                             (@enumerableConnection (@singleASTopology t2) [rt & r'] [dt & d'])) as [ | c _ ].
+    * refine None.
+    * refine (Some c).
+  Defined.
+
+  Definition findNeighbor
+             (t2 : SingleASTopologyClass)
+             (ri' : @router t2 internal)
+             (re' : @router t2 external)
+             : option (@neighbor t2 ri' re').
+  destruct (@enumerate (@neighbor t2 ri' re') (@enumerableNeighbor t2 ri' re'))
+           as [ | n _ ].
+  * refine None.
+  * refine (Some n).
+  Defined.
+
+  Definition findInjectedNotAvailableRouting
+             (t2 : SingleASTopologyClass)
+             (r' : @router t2 internal)
+             : option (@Routing t2 r').
+    induction (@enumerate (@incoming (@singleASTopology t2) [internal & r']) (@enumerableIncoming (@singleASTopology t2) [internal & r'])) as [ | h t].
+    * refine None.
+    * remember h as h'.
+      destruct h as [ |  ].
+      (* found an injected routing *)
+      + refine (Some (@onlyNotAvailable t2 r' h')).
+      (* recursive case, go down the list *)
+      + refine IHt.
+  Defined.
+
+  Definition findReceivedNotAvailableRouting
+             (t2 : SingleASTopologyClass)
+             (r' : @router t2 internal)
+             (st : RouterType)
+             (s' : @router t2 st)
+             (cs' : @connection (@singleASTopology t2) [st & s'] [internal & r'])
+             : option (@Routing t2 r').
+  induction (@enumerate (@incoming (@singleASTopology t2) [internal & r']) (@enumerableIncoming (@singleASTopology t2) [internal & r'])) as [ | h t].
+    * refine None.
+    * remember h as h'.
+      destruct h as [ | sp  ].
+      (* injected => recurse *)
+      + refine IHt.
+      (* received => check for equality *)
+      + destruct sp as [s'' cs''].
+        destruct (eqDecide [st & s'] s'') as [Heq | Hneq].
+        (* hit upon the same routers *)
+        - refine (Some (@onlyNotAvailable t2 r' h')).
+        - refine IHt.
+  Defined.
+
+  Definition adaptRouting
+             (t1 t2 : SingleASTopologyClass)
+             (r  : @router t1 internal)
+             (r' : @router t2 internal)
+             (adapter : routerAdapter t1 t2)
+             (routing : @Routing t1 r)
+             : option (@Routing t2 r').
+    unfold routerAdapter in adapter.
+    destruct routing as [ rIn | ri re n ].
+    * destruct rIn as [ | sp ].
+      (* injected routing *)
+      - refine (findInjectedNotAvailableRouting t2 r').
+      (* received routing *)
+      - destruct sp as [s cs].
+        destruct s as [st s].
+        unfold connection in cs.
+        destruct (adapter st s) as [ s' | ].
+        (* check that there's a connection between s' and r' *)
+        + destruct (findConnection t2 st internal s' r') as [ cs' | ].
+          ** refine (findReceivedNotAvailableRouting t2 r' st s' cs').
+          ** refine None.
+        (* s does not exist in t2, so we're done *)
+        + refine None.
+    (* allAvailable case *)
+    * destruct (adapter internal ri) as [ri' | ].
+      - destruct (adapter external re) as [re' | ]. 
+        + destruct (findNeighbor t2 ri' re') as [ n' | ].
+          ** refine (Some (@allAvailable t2 r' ri' re' n')).
+          ** refine None.
+        + refine None.
+      - refine None.
+  Defined.
+
   Definition transBind 
              (t1 t2 : SingleASTopologyClass)
              (c1 : @SingleASConfigurationClass _ _ t1)
@@ -1659,11 +1754,26 @@ Section Incrementalization.
     destruct p as [[conn routing1] routing2].
     unfold outgoingConn in *.
     unfold routerAdapter in adapter.
-    
-    
-    (* if r is in t2/c2 ... enumerate rounters in t2 and check for r *)
-
-    refine empty. (* give up for now, just to get the types working *)
+    unfold outgoing in *.
+    unfold connection in *.
+    destruct (adapter internal r) as [ r' | ].
+    (* r' is r's counterpart in the new topology, so translate the rest of the routing *)
+    * destruct conn as [d e].
+      destruct d as [dt d].
+      (* d is r's neighbor, see if it's still in the topology and still a neighbor *)
+      destruct (adapter dt d) as [ d' | ].
+      + destruct (findConnection t2 internal dt r' d') as [ c' | ]. 
+        - destruct (adaptRouting t1 t2 r r' adapter routing1) as [routing1' | ].
+          ** destruct (adaptRouting t1 t2 r r' adapter routing2) as [routing2' | ].
+             ++ refine (single ([r' & _])).
+                refine ([[dt & d'] & _], routing1', routing2').
+                refine c'.
+             ++ refine empty.
+          ** refine empty.
+        (* no connection *)
+        - refine empty.
+      + refine empty.
+    * refine empty.
   Defined.
 
   Definition denoteQuery (t : SingleASTopologyClass) (c : @SingleASConfigurationClass _ _ t) : Type := 
