@@ -932,6 +932,7 @@ Section BGPV.
   Context `{BA':Basic}.
   Context `{PS':@Search BA'}.
   Context `{M:@Minus BA'}.
+  Context `{I:@IncSearch BA' BA' M}.
   
   Arguments head {_} _ /.
 
@@ -946,6 +947,101 @@ Section BGPV.
   Definition incBgpvScheduler
              (Q: Query) (v v': Space {r : router internal & (outgoing [internal & r] * Routing r * Routing r)%type}) :=
     bgpvScheduler Q (minus v v').
+
+  Lemma denoteBindMinus {A B} `{eqDec A} : forall (s s' : Space A) (f : A -> Space B),
+      ⟦ bind s' f ⟧ = Ensembles.Empty_set B -> ⟦ bind (minus s s') f ⟧ = ⟦ bind s f ⟧.
+  Proof.
+    intros s s' f Hempty.
+    do 2 (rewrite denoteBindOk).
+    rewrite denoteBindOk in Hempty.
+    rewrite denoteMinusOk.
+    apply Extensionality_Ensembles. 
+    simpl. split.
+    * intros.
+      inversion H0.
+      inversion H1.
+      rewrite bigUnionIsExists.
+      exists a. crush.
+    * intros.
+      assert (~BigUnion A B ⟦ s' ⟧ (fun a : A => ⟦ (f a) ⟧) x) as Hempty'
+             by (rewrite emptyIsFalse in Hempty; intro H'; rewrite Hempty in H'; auto).
+      rewrite bigUnionIsExists in H0.
+      destruct H0 as [x' Hx'].
+      destruct Hx' as [Hx'1 Hx'2].
+      rewrite bigUnionIsExists in Hempty'.
+      assert (~Ensembles.In ⟦ s' ⟧ x') as H' by (intro H''; apply Hempty'; exists x'; auto).
+      rewrite bigUnionIsExists.
+      exists x'.
+      split; try intuition.
+  Qed.
+
+  Lemma incBgpvSchedulerEmpty : forall Q v v',
+      listSearch (bind v' (compose optionToSpace (compose head (bgpvCore Q)))) = []
+      -> 
+      (listSearch (bind (minus v v') (compose optionToSpace (compose head (bgpvCore Q))))
+                  = []
+       <->
+       listSearch (bind v (compose optionToSpace (compose head (bgpvCore Q)))) = []).
+  Proof.
+    intros Q v v' H.
+    unfold listSearch in *.
+    assert (search (bind v' (compose optionToSpace (compose head (bgpvCore Q)))) = uninhabited) as H' by (destruct (search (bind v' (compose optionToSpace (compose head (bgpvCore Q))))); [inversion H | auto]).
+    apply searchUninhabited in H'.
+    remember (search (bind (minus v v') (compose optionToSpace (compose head (bgpvCore Q))))) as s.
+    remember (search (bind v (compose optionToSpace (compose head (bgpvCore Q))))) as s'.
+    symmetry in Heqs, Heqs'.
+    apply (denoteBindMinus v v' (compose optionToSpace (compose head (bgpvCore Q)))) in H'.
+    split.
+    * destruct s; intro H''; try congruence.
+      apply searchUninhabited in Heqs.
+      destruct s'; try auto.
+      apply searchSolution in Heqs'.
+      rewrite H' in Heqs.
+      rewrite Heqs in Heqs'.
+      rewrite emptyIsFalse in Heqs'.
+      inversion Heqs'.
+    * destruct s; intro H''; try auto.
+      apply searchSolution in Heqs.
+      rewrite H' in Heqs.
+      destruct s'; try congruence.
+      apply searchUninhabited in Heqs'.
+      rewrite emptyIsFalse in Heqs'.
+      rewrite Heqs' in Heqs.
+      inversion Heqs.
+  Qed.
+
+  Lemma incBgpvSchedulerInhabited : forall Q v v',
+      listSearch (bind v' (compose optionToSpace (compose head (bgpvCore Q)))) = []
+      -> 
+      (listSearch (bind (minus v v') (compose optionToSpace (compose head (bgpvCore Q))))
+                  <> []
+       <->
+       listSearch (bind v (compose optionToSpace (compose head (bgpvCore Q)))) <> []).
+  Proof.
+    intros Q v v' H.
+    unfold listSearch in *.
+    assert (search (bind v' (compose optionToSpace (compose head (bgpvCore Q)))) = uninhabited) as H' by (destruct (search (bind v' (compose optionToSpace (compose head (bgpvCore Q))))); [inversion H | auto]).
+    apply searchUninhabited in H'.
+    remember (search (bind (minus v v') (compose optionToSpace (compose head (bgpvCore Q))))) as s.
+    remember (search (bind v (compose optionToSpace (compose head (bgpvCore Q))))) as s'.
+    symmetry in Heqs, Heqs'.
+    apply (denoteBindMinus v v' (compose optionToSpace (compose head (bgpvCore Q)))) in H'.
+    split; destruct s; intro H''; try congruence.
+    * apply searchSolution in Heqs.
+      rewrite H' in Heqs.
+      destruct s'; try congruence.
+      apply searchUninhabited in Heqs'.
+      rewrite emptyIsFalse in Heqs'.
+      rewrite Heqs' in Heqs.
+      inversion Heqs.
+    * apply searchUninhabited in Heqs.
+      rewrite emptyIsFalse in Heqs.
+      rewrite H' in Heqs.
+      destruct s'; try congruence.
+      apply searchSolution in Heqs'.
+      rewrite Heqs in Heqs'.
+      inversion Heqs'.
+  Qed.
 
   Instance fullRouting `{Basic} r : Full (Routing r).
     simple refine {|full := _ |}.
