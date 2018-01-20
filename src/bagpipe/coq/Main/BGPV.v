@@ -1839,12 +1839,11 @@ Section Incrementalization.
       - refine None.
   Defined.
 
-  Definition transBind 
-             (t1 t2 : SingleASTopologyClass)
+  Definition adaptRoutingPair (t1 t2 : SingleASTopologyClass)
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
              (adapter : routerAdapter t1 t2)
-             (v : routingPair t1 c1) : @Space BA' (routingPair t2 c2).
+             (v : routingPair t1 c1) : option (routingPair t2 c2).
     unfold routingPair in *.
     destruct v as [r p].
     destruct p as [[conn routing1] routing2].
@@ -1852,25 +1851,27 @@ Section Incrementalization.
     unfold routerAdapter in adapter.
     unfold outgoing in *.
     unfold connection in *.
-    destruct (adapter internal r) as [ r' | ].
+    destruct (adapter internal r) as [ r' | ]; [| refine None].
     (* r' is r's counterpart in the new topology, so translate the rest of the routing *)
-    * destruct conn as [d e].
-      destruct d as [dt d].
-      (* d is r's neighbor, see if it's still in the topology and still a neighbor *)
-      destruct (adapter dt d) as [ d' | ].
-      + destruct (findConnection t2 internal dt r' d') as [ c' | ]. 
-        - destruct (adaptRouting t1 t2 r r' adapter routing1) as [routing1' | ].
-          ** destruct (adaptRouting t1 t2 r r' adapter routing2) as [routing2' | ].
-             ++ refine (single ([r' & _])).
-                refine ([[dt & d'] & _], routing1', routing2').
-                refine c'.
-             ++ refine empty.
-          ** refine empty.
-        (* no connection *)
-        - refine empty.
-      + refine empty.
-    * refine empty.
+    destruct conn as [d e].
+    destruct d as [dt d].
+    (* d is r's neighbor, see if it's still in the topology and still a neighbor *)
+    destruct (adapter dt d) as [ d' | ]; [| refine None].
+    destruct (findConnection t2 internal dt r' d') as [ c' | ]; [| refine None].
+    destruct (adaptRouting t1 t2 r r' adapter routing1) as [routing1' | ]; [| refine None].
+    destruct (adaptRouting t1 t2 r r' adapter routing2) as [routing2' | ]; [| refine None].
+    refine (Some [r' & _]).
+    refine ([[dt & d'] & _], routing1', routing2').
+    refine c'.
   Defined.
+
+  Definition transBind 
+             (t1 t2 : SingleASTopologyClass)
+             (c1 : @SingleASConfigurationClass _ _ t1)
+             (c2 : @SingleASConfigurationClass _ _ t2)
+             (adapter : routerAdapter t1 t2)
+             (v : routingPair t1 c1) : @Space BA' (routingPair t2 c2) 
+    := optionToSpace (adaptRoutingPair t1 t2 c1 c2 adapter v).
 
   Definition denoteQuery (t : SingleASTopologyClass) (c : @SingleASConfigurationClass _ _ t) : Type := 
     Query -> forall r, incoming [internal & r] -> 
@@ -1914,6 +1915,47 @@ Section Incrementalization.
              (bgpvS : bgpvScheduler t2 c2 dq)
     := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2 adapter)) 
                                 dq bgpvS.
+
+  (* must prove that if s is empty in t1, c1, then (bind s (transBind t1 t2 c1 c2)) is empty in t2, c2? *)
+  (* maybe it needs to be proven about a particular implementation? *)
+  (* bgpvCore only gives an empty space when the following is FALSE:
+    exact (sumBoolAnd (bool2sumbool (leDecRoutingInformation al' al)) (bool2sumbool (negb (denoteQuery Q r s d p ai al' al ao)))).
+    (see context)
+    ... maybe sufficient to show that as long as this is false in both (t1,c1) and (t2,c2),
+    then the translation is okay?
+
+    That is, we must show that if bgpvCore returns empty for a member r of v,
+    then ((transBind t1 t2 c1 c2 adapter) r) is empty or bgpvCore returns empty for
+    all members of that space... but how? Note dependency on denoteQuery as well as routing information
+
+    Cheap thing to do, of course, could be to build this right into the translation bind, the question is whether that's kosher -- trouble would be is if we end up redoing all the work from the first run of Bagpipe and therefore don't save anything by incrementalizing
+
+    Of course, there is the fundamental issue that you need to know just how the topology's changed to be able to decide that your translation is okay. Perhaps there's some more concise way to be able to prove that anything that gets through the transBind will not have a non-empty bgpvCore? I.e., establish easy-to-check conditions
+   *)
+  (*
+  Lemma transBindEmpty : forall              
+      (t1 t2 : SingleASTopologyClass)
+      (c1 : @SingleASConfigurationClass _ _ t1)
+      (c2 : @SingleASConfigurationClass _ _ t2)
+      (adapter : routerAdapter t1 t2)
+      (v : Space (routingPair t1 c1))
+      (dq : denoteQuery t1 c1)
+      (dq' : denoteQuery t2 c2)
+      (Q : Query),
+      listSearch (bind v (compose optionToSpace 
+                                  (compose head 
+                                           (@bgpvCore BA PS _ _ _ _ 
+                                                      t1 c1 Query 
+                                                      dq Q)))) = []
+      ->
+      listSearch (bind (bind v (transBind t1 t2 c1 c2 adapter))
+                       (compose optionToSpace 
+                                (compose head 
+                                         (@bgpvCore BA PS _ _ _ _ 
+                                                    t2 c2 Query 
+                                                    dq' Q)))) = [].
+
+  *)
 
   (* Based on parallelBGPV and the like *)
   Definition parallelIncBgpv (t1 t2 : SingleASTopologyClass) 
