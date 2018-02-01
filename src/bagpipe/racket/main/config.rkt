@@ -49,7 +49,7 @@
 
 ; for incrementalization: takes routers in two ASes and determines if they
 ; have the same config
-(define (as-compare-configs as1 r1 n1 as2 r2 n2
+(define (as-compare-configs as1 r1 n1 as2 r2 n2)
   ; need to be of the same config language
   (if (not (equal? (car as1) (car as2)))
     #f
