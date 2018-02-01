@@ -61,5 +61,10 @@
       (define res (as-denote-export as r o* (announcement-prefix-set a p)))
       (if res `(Available ,res) `(NotAvailable))))))))))
 
-(define compare-configs (lambdas (as1 r1 n1 as2 r2 n2)
-  (if (as-compare-configs as1 r1 n1 as2 r2 n2) '(True) '(False))))
+; takes in connections
+(define compare-configs (lambdas (as1 r1 c1 as2 r2 c2)
+  (match c1 ((ExistT __ n1*)
+    (match c2 ((ExistT __ n2*) (begin
+      (define res (as-compare-configs as1 r1 n1* as2 r2 n2*))
+      (if res '(True) '(False)))))))))
+

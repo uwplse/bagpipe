@@ -305,6 +305,19 @@ Section BGPV.
 End BGPV.
 
 Section IncBGPV.
+  Existing Instance singleASTopology.
+
+  Parameter compareConfigs : 
+    forall (setup1 : AS) 
+           (r1 : @router (bagpipeTopology setup1) internal) 
+           (c1 : {s: @Router (@singleASTopology (bagpipeTopology setup1)) 
+                     & connection s [internal & r1]}) 
+           (setup2 : AS) 
+           (r2 : @router (bagpipeTopology setup2) internal) 
+           (c2 : {s: @Router (@singleASTopology (bagpipeTopology setup2)) 
+                     & connection s [internal & r2]}), 
+      bool.
+
   Definition refined_internals (setup : AS) : list { ri : IP | In ri (internals setup) }.
     induction (internals setup).
     * refine [].
@@ -445,6 +458,7 @@ Extract Constant bestIncomingBGP => "(lambda (_) __)".
 
 Extract Constant denoteImport => "denote-import".
 Extract Constant denoteExport => "denote-export".
+Extract Constant compareConfigs => "compare-configs".
 
 Extract Constant internals => "(lambdas (as) (coqify-list (as-internal-routers as)))".
 Extract Constant neighbors => "(lambdas (as r) (coqify-list (as-router-external-neighbors as r)))".
