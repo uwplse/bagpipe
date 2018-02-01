@@ -3,11 +3,13 @@
 (require "parser.rkt")
 (require "denote.rkt")
 (require "cache.rkt")
+(require "compare.rkt")
 (require "../util/util.rkt")
 (require "../network/network.rkt")
 
 (provide as-from-configs as-denote-import as-denote-export
-         as-internal-routers as-router-external-neighbors as-environment)
+         as-internal-routers as-router-external-neighbors as-environment
+	 as-compare-policies)
 
 (define (as-from-configs configs)
   (cache (cisco->sexp configs)))
@@ -26,3 +28,5 @@
 (define (as-internal-routers as) (cache-internal-routers as))
 
 (define (as-router-external-neighbors as r) (cache-router-external-neighbors as r))
+
+(define (as-compare-policies as1 r1 n1 as2 r2 n2) (compare-policies as1 r1 n1 as2 r2 n2))

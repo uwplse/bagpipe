@@ -9,7 +9,8 @@
 (require "util/extraction-rosette.rkt")
 
 (provide load-prop load-as load-driver
-         denote-prop denote-import denote-export)
+         denote-prop denote-import denote-export 
+	 compare-configs)
 
 (define (load-prop args)
   (current-directory (car args))

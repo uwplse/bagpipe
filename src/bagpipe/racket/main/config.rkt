@@ -8,7 +8,8 @@
 (require (prefix-in cisco- "cisco/cisco.rkt"))
 
 (provide as-from-configs as-denote-import as-denote-export
-         as-internal-routers as-router-external-neighbors as-environment)
+         as-internal-routers as-router-external-neighbors as-environment
+	 as-compare-configs)
 
 ; this interface provides a couple of opaque types
 ; as: represents an entire as, including router topology and configs
@@ -53,4 +54,4 @@
   ; need to be of the same config language
   (if (not (equal? (car as1) (car as2)))
     #f
-    ((dispatch as1 juniper-compare-policies cisco-compare-policies) r1 n1 (cdr as2) r2 n2)))
+    ((dispatch as1 juniper-as-compare-policies cisco-as-compare-policies) r1 n1 (cdr as2) r2 n2)))
