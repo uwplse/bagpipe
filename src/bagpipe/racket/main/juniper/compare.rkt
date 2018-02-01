@@ -8,7 +8,7 @@
 (require "denote.rkt")
 (require "config.rkt")
 
-(provide compare-policies)
+(provide compare-import-policies compare-export-policies)
 
 ; for the "translation phase" of incrementalization; does not use rosette-eq
 ; because we'd prefer to avoid any searching while subtracting spaces
@@ -32,8 +32,3 @@
   (define policies1 (neighbor-export (router-find-neighbors r1* o1)))
   (define policies2 (neighbor-export (router-find-neighbors r2* o2)))
   (equal? policies1 policies2))
-
-(define (compare-policies as1 r1 n1 as2 r2 n2)
-  (and 
-    (compare-import-policies as1 r1 n1 as2 r2 n2) 
-    (compare-export-policies as1 r1 n1 as2 r2 n2)))

@@ -5,7 +5,7 @@
 
 (require "denote.rkt")
 
-(provide compare-policies)
+(provide compare-import-policies compare-export-policies)
 
 ; based on denote.rkt but non-rosette for the purposes of being easily run
 ; during the "translation phase" of incrementalization
@@ -48,9 +48,12 @@
 
 ; checks if two routers in different ASes have exactly the
 ; same configuration (for incrementalization)
-(define (compare-policies as1 r1 n1 as2 r2 n2)
-  (define import1 (find-policy-stmts '_importPolicy as1 r1 n1))
-  (define import2 (find-policy-stmts '_importPolicy as2 r2 n2))
-  (define export1 (find-policy-stmts '_exportPolicy as1 r1 n1))
-  (define export2 (find-policy-stmts '_exportPolicy as2 r2 n2))
-  (and (equal? import1 import2)) (equal? export1 export2))
+(define (compare-import-policies as1 r1 i1 as2 r2 i2)
+  (define import1 (find-policy-stmts '_importPolicy as1 r1 i1))
+  (define import2 (find-policy-stmts '_importPolicy as2 r2 i2))
+  (equal? import1 import2))
+
+(define (compare-export-policies as1 r1 o1 as2 r2 o2)
+  (define export1 (find-policy-stmts '_exportPolicy as1 r1 o1))
+  (define export2 (find-policy-stmts '_exportPolicy as2 r2 o2))
+  (equal? export1 export2))

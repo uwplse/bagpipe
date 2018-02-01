@@ -10,7 +10,7 @@
 
 (provide load-prop load-as load-driver
          denote-prop denote-import denote-export 
-	 compare-configs)
+	 compare-incoming-configs compare-outgoing-configs)
 
 (define (load-prop args)
   (current-directory (car args))
@@ -62,9 +62,12 @@
       (if res `(Available ,res) `(NotAvailable))))))))))
 
 ; takes in connections
-(define compare-configs (lambdas (as1 r1 c1 as2 r2 c2)
-  (match c1 ((ExistT __ n1*)
-    (match c2 ((ExistT __ n2*) (begin
-      (define res (as-compare-configs as1 r1 n1* as2 r2 n2*))
-      (if res '(True) '(False)))))))))
+(define compare-incoming-configs (lambdas (as1 r1 i1 as2 r2 i2)
+  (match i1 ((ExistT __ i1*) (match i2 ((ExistT __ i2*) (begin
+    (define res (as-compare-incoming-policies as1 r1 i1* as2 r2 i2*))
+    (if res '(True) '(False)))))))))
 
+(define compare-outgoing-configs (lambdas (as1 r1 o1 as2 r2 o2)
+  (match o1 ((ExistT __ o1*) (match o2 ((ExistT __ o2*) (begin
+    (define res (as-compare-outgoing-policies as1 r1 o1* as2 r2 o2*))
+    (if res '(True) '(False)))))))))

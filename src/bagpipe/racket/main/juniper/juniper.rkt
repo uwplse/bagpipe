@@ -10,7 +10,7 @@
 
 (provide as-from-configs as-denote-import as-denote-export
          as-internal-routers as-router-external-neighbors as-environment
-	 as-compare-policies)
+	 as-compare-incoming-policies as-compare-outgoing-policies)
 
 ; represents ases as AS defined in config.rkt
 ; represents routers as ip addresses
@@ -39,4 +39,8 @@
   (define res (map neighbor-ip (filter neighbor-external? (router-neighbors r*))))
   res)
 
-(define (as-compare-policies as1 r1 n1 as2 r2 n2) (compare-policies as1 r1 n2 as2 r2 n2))
+(define (as-compare-incoming-policies as1 r1 i1 as2 r2 i2) 
+   (compare-import-policies as1 r1 i1 as2 r2 i2))
+
+(define (as-compare-outgoing-policies as1 r1 o1 as2 r2 o2) 
+   (compare-export-policies as1 r1 o1 as2 r2 o2))

@@ -9,7 +9,7 @@
 
 (provide as-from-configs as-denote-import as-denote-export
          as-internal-routers as-router-external-neighbors as-environment
-	 as-compare-configs)
+	 as-compare-incoming-policies as-compare-outgoing-policies)
 
 ; this interface provides a couple of opaque types
 ; as: represents an entire as, including router topology and configs
@@ -50,8 +50,14 @@
 
 ; for incrementalization: takes routers in two ASes and determines if they
 ; have the same config
-(define (as-compare-configs as1 r1 n1 as2 r2 n2)
-  ; need to be of the same config language
+(define (as-compare-incoming-policies as1 r1 i1 as2 r2 i2)
+  ; need to be of same config language
   (if (not (equal? (car as1) (car as2)))
     #f
-    ((dispatch as1 juniper-as-compare-policies cisco-as-compare-policies) r1 n1 (cdr as2) r2 n2)))
+    ((dispatch as1 juniper-as-compare-incoming-policies cisco-as-compare-incoming-policies) r1 i1 (cdr as2) r2 i2)))
+
+(define (as-compare-outgoing-policies as1 r1 o1 as2 r2 o2)
+  ; need to be of same config language
+  (if (not (equal? (car as1) (car as2)))
+    #f
+    ((dispatch as1 juniper-as-compare-outgoing-policies cisco-as-compare-outgoing-policies) r1 o1 (cdr as2) r2 o2)))
