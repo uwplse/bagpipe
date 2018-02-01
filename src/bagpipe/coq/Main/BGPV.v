@@ -1720,30 +1720,26 @@ Section Incrementalization.
    * AS to another in order to determine whether we can translate a routing pair. *)
   Definition routerAdapter (t1 : SingleASTopologyClass) (t2 : SingleASTopologyClass) : Type := forall (rt: RouterType), @router t1 rt -> option (@router t2 rt).
 
+  (* We also need to know whether the configuration for a given connection between routers
+   * has changed -- we want to be conservative and re-check any connection where the config
+   * has changed, but we need to delegate this check to the implementation of the 
+   * topology/config.*)
+  Definition incomingConfigChecker (t1 : SingleASTopologyClass) (t2 : SingleASTopologyClass) : Type :=
+    forall (r1 : @router t1 internal) 
+           (c1 : {s: @Router (@singleASTopology t1) & connection s [internal & r1]})
+           (r2 : @router t2 internal) 
+           (c2 : {s: @Router (@singleASTopology t2) & connection s [internal & r2]}),
+      bool.
 
-  (* this is the hard part: must take a routing pair from one topology and
-   * translate to another topology *)
-  (* Desired bind pseudocode: 
-     We want to keep any paths that are unchanged in the new
-       config, drop ones that have changed
+  Definition outgoingConfigChecker (t1 : SingleASTopologyClass) (t2 : SingleASTopologyClass) : Type :=
+    forall (r1 : @router t1 internal) 
+           (c1 : {s: @Router (@singleASTopology t1) 
+                     & @connection (@singleASTopology t1) [internal & r1] s})
+           (r2 : @router t2 internal) 
+           (c2 : {s: @Router (@singleASTopology t2) 
+                     & @connection (@singleASTopology t2) [internal & r2] s}),
+      bool.
 
-    Definition bindChangedPaths 
-      (v: {r : router internal 
-           & (outgoing [internal & r] * Routing r * Routing r)%type}) :=
-       if r is not present in the new configuration
-          return an empty space
-       else if the outgoing neighbor is not present
-          or not a neighbor in the new config
-          return an empty space
-       else if the routings involve an internal router that is not
-          present in the new config (what about external routers? I suppose
-          we could check if they are still neighbors in the new config too)
-          return an empty space
-       else
-         return a singleton where we translate r, the outgoing neighbor,
-           and the two routings into ones from the new topology (using
-           the constructors)
-   *)
   Definition findConnection
              (t2 : SingleASTopologyClass)
              (rt : RouterType)
@@ -1811,9 +1807,11 @@ Section Incrementalization.
              (r  : @router t1 internal)
              (r' : @router t2 internal)
              (adapter : routerAdapter t1 t2)
+             (checker : incomingConfigChecker t1 t2)
              (routing : @Routing t1 r)
              : option (@Routing t2 r').
     unfold routerAdapter in adapter.
+    unfold incomingConfigChecker in checker.
     destruct routing as [ rIn | ri re n ].
     * destruct rIn as [ | sp ].
       (* injected routing *)
@@ -1825,7 +1823,9 @@ Section Incrementalization.
         destruct (adapter st s) as [ s' | ].
         (* check that there's a connection between s' and r' *)
         + destruct (findConnection t2 st internal s' r') as [ cs' | ].
-          ** refine (findReceivedNotAvailableRouting t2 r' st s' cs').
+          ** (*check that the config has not changed *)
+             destruct (checker r [[st & s] & cs] r' [[st & s'] & cs']); [| refine None].
+             refine (findReceivedNotAvailableRouting t2 r' st s' cs').
           ** refine None.
         (* s does not exist in t2, so we're done *)
         + refine None.
@@ -1843,26 +1843,36 @@ Section Incrementalization.
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
              (adapter : routerAdapter t1 t2)
+             (incomingChecker : incomingConfigChecker t1 t2)
+             (outgoingChecker : outgoingConfigChecker t1 t2)
              (v : routingPair t1 c1) : option (routingPair t2 c2).
     unfold routingPair in *.
     destruct v as [r p].
     destruct p as [[conn routing1] routing2].
     unfold outgoingConn in *.
     unfold routerAdapter in adapter.
+    unfold incomingConfigChecker in incomingChecker.
+    unfold outgoingConfigChecker in outgoingChecker.
     unfold outgoing in *.
     unfold connection in *.
     destruct (adapter internal r) as [ r' | ]; [| refine None].
     (* r' is r's counterpart in the new topology, so translate the rest of the routing *)
-    destruct conn as [d e].
+    remember conn as c.
+    destruct c as [d e].
     destruct d as [dt d].
     (* d is r's neighbor, see if it's still in the topology and still a neighbor *)
     destruct (adapter dt d) as [ d' | ]; [| refine None].
-    destruct (findConnection t2 internal dt r' d') as [ c' | ]; [| refine None].
-    destruct (adaptRouting t1 t2 r r' adapter routing1) as [routing1' | ]; [| refine None].
-    destruct (adaptRouting t1 t2 r r' adapter routing2) as [routing2' | ]; [| refine None].
+    destruct (findConnection t2 internal dt r' d') as [ conn' | ]; [| refine None].
+    (* check that configuration has not changed in the connection *)
+    unfold connection in conn'.
+    destruct (outgoingChecker r [[dt & d] & e] r' [[dt & d'] & conn']); [| refine None].
+    destruct (adaptRouting t1 t2 r r' adapter incomingChecker routing1) as [routing1' | ]; 
+      [| refine None].
+    destruct (adaptRouting t1 t2 r r' adapter incomingChecker routing2) as [routing2' | ]; 
+      [| refine None].
     refine (Some [r' & _]).
     refine ([[dt & d'] & _], routing1', routing2').
-    refine c'.
+    refine conn'.
   Defined.
 
   Definition transBind 
@@ -1870,8 +1880,10 @@ Section Incrementalization.
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
              (adapter : routerAdapter t1 t2)
+             (incomingChecker : incomingConfigChecker t1 t2)
+             (outgoingChecker : outgoingConfigChecker t1 t2)
              (v : routingPair t1 c1) : @Space BA' (routingPair t2 c2) 
-    := optionToSpace (adaptRoutingPair t1 t2 c1 c2 adapter v).
+    := optionToSpace (adaptRoutingPair t1 t2 c1 c2 adapter incomingChecker outgoingChecker v).
 
   Definition denoteQuery (t : SingleASTopologyClass) (c : @SingleASConfigurationClass _ _ t) : Type := 
     Query -> forall r, incoming [internal & r] -> 
@@ -1908,12 +1920,16 @@ Section Incrementalization.
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2: @SingleASConfigurationClass _ _ t2)
              (adapter : routerAdapter t1 t2)
+             (incomingChecker : incomingConfigChecker t1 t2)
+             (outgoingChecker : outgoingConfigChecker t1 t2)
              (Q : Query)
              (s' : Space (routingPair t2 c2))
              (s : Space (routingPair t1 c1))
              (dq : denoteQuery t2 c2)
              (bgpvS : bgpvScheduler t2 c2 dq)
-    := expandedIncBgpvScheduler t2 c2 Q s' (bind s (transBind t1 t2 c1 c2 adapter)) 
+    := expandedIncBgpvScheduler t2 c2 Q s' 
+                                (bind s (transBind t1 t2 c1 c2 adapter 
+                                                   incomingChecker outgoingChecker)) 
                                 dq bgpvS.
 
   (* must prove that if s is empty in t1, c1, then (bind s (transBind t1 t2 c1 c2)) is empty in t2, c2? *)
@@ -1962,6 +1978,8 @@ Section Incrementalization.
              (c1 : @SingleASConfigurationClass _ _ t1)
              (c2 : @SingleASConfigurationClass _ _ t2)
              (adapter : routerAdapter t1 t2)
+             (incomingChecker : incomingConfigChecker t1 t2)
+             (outgoingChecker : outgoingConfigChecker t1 t2)
              (dq : denoteQuery t2 c2)
              (bgpvS : bgpvScheduler t2 c2 dq)
              (fullRouters1 : forall (S' : Basic) (t' : RouterType), Full (@router t1 t'))
@@ -1981,7 +1999,7 @@ Section Incrementalization.
                        * (@RoutingInformation (@trackingAttributes' _ t2)))%type}
     := 
       let ' exist _ v _ := 
-          heteroIncBgpvScheduler t1 t2 c1 c2 adapter Q 
+          heteroIncBgpvScheduler t1 t2 c1 c2 adapter incomingChecker outgoingChecker Q 
               (@full BA' (routingPair t2 c2) (@FullRoutingPair BA' t2 c2 _ _)) 
               (@full BA' (routingPair t1 c1) (@FullRoutingPair BA' t1 c1 _ _)) 
               dq bgpvS in v.
