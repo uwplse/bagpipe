@@ -59,3 +59,6 @@
     (match record ((ExistT __ o*) (begin ; internal/external
       (define res (as-denote-export as r o* (announcement-prefix-set a p)))
       (if res `(Available ,res) `(NotAvailable))))))))))
+
+(define compare-configs (lambdas (as1 r1 n1 as2 r2 n2)
+  (if (as-compare-configs as1 r1 n1 as2 r2 n2) '(True) '(False))))
