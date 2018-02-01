@@ -46,7 +46,9 @@
 
 ; checks if two routers in different ASes have exactly the
 ; same configuration (for incrementalization)
-(define (compare-policies kind as1 r1 n1 as2 r2 n2)
-  (define stmts1 (find-policy-stmts kind as1 r1 n1))
-  (define stmts2 (find-policy-stmts kind as2 r2 n2))
-  (equal? stmts1 stmts2))
+(define (compare-policies as1 r1 n1 as2 r2 n2)
+  (define import1 (find-policy-stmts '_importPolicy as1 r1 n1))
+  (define import2 (find-policy-stmts '_importPolicy as2 r2 n2))
+  (define export1 (find-policy-stmts '_exportPolicy as1 r1 n1))
+  (define export2 (find-policy-stmts '_exportPolicy as2 r2 n2))
+  (and (equal? import1 import2)) (equal? export1 export2))
