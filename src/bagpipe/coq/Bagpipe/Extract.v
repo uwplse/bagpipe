@@ -492,4 +492,4 @@ Extract Constant elimExecutionMode => "(lambdas (m imp exp pref all) (case m ((i
 Definition listHead := head.
 
 Extraction "bgpv-core" bgpvCore'.
-Extraction "bgpv" bgpv optionToSpace listHead.
+Extraction "bgpv" bgpv optionToSpace listHead incBgpvAll.
