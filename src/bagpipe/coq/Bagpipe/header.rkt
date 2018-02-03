@@ -12,7 +12,7 @@
 (require racket/place/distributed)
 (require racket/serialize)
 
-(provide bgpv bgpv-place)
+(provide bgpv bgpv-place incBgpvAll)
 
 (define place-batch-size 8)
 (define symbolic-batch-size 1)

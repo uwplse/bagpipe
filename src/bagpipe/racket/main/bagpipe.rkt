@@ -188,6 +188,44 @@
   (write-string "\n")
   (flush-output))
 
+(define (incremental args)
+  (define as (load-as args))
+  (write-string "done loading as\n") (flush-output)
+  (define as* (load-old-as args))
+  (write-string "done loading old as\n") (flush-output)
+  (define prop (load-prop args))
+  (write-string "done loading property\n") (flush-output)
+  ; no need for a driver, since there is currently no choice of mode
+  ;  (define driver (load-driver args))
+  ;  (write-string (string-append "done loading driver " (~a driver) "\n"))
+  (define rs (as-internal-routers as))
+  (write-string (string-append "checking routers: " (format-list (map format-ip rs)) "\n"))
+  (for ([r rs]) 
+    (define ns (as-router-external-neighbors as r))
+    (write-string (string-append "  router: " (format-ip r) " has " (~a (length ns)) " external neighbors: " (format-list (map format-ip ns)) "\n")))
+  (flush-output)
+  (define rs* (as-internal-routers as*))
+  (write-string (string-append "checking old AS routers: " (format-list (map format-ip rs*)) "\n"))
+  (for ([r rs*]) 
+    (define ns* (as-router-external-neighbors as* r))
+    (write-string (string-append "  router: " (format-ip r) " has " (~a (length ns*)) " external neighbors: " (format-list (map format-ip ns*)) "\n")))
+  (flush-output)
+  (define res (@ incBgpvAll as as* prop))
+  (write-string "----- [RESULTS] -----\n")
+  (mapCoqList (lambda (record) 
+                (write-string (string-append 
+                  (unpack-counter-example record format-counter-example-yaml) 
+                  "\n"))) res)
+  (write-string (match res
+    ((Cons _ __) "policy does not hold")
+    ((Nil) "policy holds")))
+  (write-string "\n")
+  (flush-output))
+
+(define (incremental? args)
+  (and (>= (length args) 2)
+       (equal? (first args) "incemental")))
+
 (define (verify? args)
   (and (>= (length args) 2)
        (equal? (first args) "verify")))
@@ -197,13 +235,20 @@
 Usage: bagpipe COMMAND
 
 The bagpipe commands are:
-   verify SETUP ARGS     Verifies the setup in SETUP/setup.rkt. setup.rkt
-                         must define two variables called `as` and a `policy`;
-                         the former defines the AS that bagpipe verifies using 
-                         the POLICY defined by the latter. ARGS is passed to 
-                         both the AS and POLICY.
+   verify SETUP ARGS       Verifies the setup in SETUP/setup.rkt. setup.rkt
+                           must define two variables called `as` and a `policy`;
+                           the former defines the AS that bagpipe verifies using 
+                           the POLICY defined by the latter. ARGS is passed to 
+                           both the AS and POLICY.
 
-   help                  Display this help message and exit.
+   incremental SETUP ARGS  Verifies the setup in SETUP/setup.rkt using incremental
+                           search, similarly to the above option. setup.rkt must define
+                           an `as` and `policy` variable as above, as well as an `old-as`
+                           variable consisting of an already-verified configuration. ARGS
+                           is passed to AS, POLICY, and OLD-AS. The search effectively 
+                           subtracts` the old setup from the new one.
+
+   help                    Display this help message and exit.
 HELP
    ))
 
@@ -211,4 +256,5 @@ HELP
   (define cl-args (vector->list (current-command-line-arguments)))
   (cond
     [(verify? cl-args) (verify (cdr cl-args))]
+    [(incremental? cl-args) (incremental (cdr cl-args))]
     [else (help)]))

@@ -8,7 +8,7 @@
 (require "config.rkt")
 (require "util/extraction-rosette.rkt")
 
-(provide load-prop load-as load-driver
+(provide load-prop load-as load-old-as load-driver
          denote-prop denote-import denote-export 
 	 compare-incoming-configs compare-outgoing-configs)
 
@@ -24,6 +24,13 @@
   ((parameterize ([current-namespace ns])
     (load "setup.rkt")
     (eval 'as)) (cdr args)))
+
+(define (load-old-as args)
+  (current-directory (car args))
+  (define ns (namespace-anchor->namespace a))
+  ((parameterize ([current-namespace ns])
+    (load "setup.rkt")
+    (eval 'old-as)) (cdr args)))
 
 (define (load-driver args)
   (current-directory (car args))

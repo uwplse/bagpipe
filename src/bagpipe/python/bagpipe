@@ -37,7 +37,7 @@ def sshd():
   subprocess.call(["service", "ssh", "start"])
 
 if __name__ == '__main__':
-  if len(sys.argv) >= 2 and sys.argv[1] == "verify":
+  if len(sys.argv) >= 2 and (sys.argv[1] == "verify" or sys.argv[1] == "incremental"):
     sshd()
     bagpipe(sys.argv[2:])
   elif len(sys.argv) == 2 and sys.argv[1] == "slave":
@@ -49,15 +49,23 @@ Usage: bagpipe COMMAND
 
 The bagpipe commands are:
 
-   verify ARGS   Verifies the SETUP which is passed as a mount point called
-                `setup`, or passed as a tar file via standard input. The SETUP 
-                 must contain a file called `setup.rkt`. `setup.rkt` must define 
-                 two variables called `as` and `policy`; the former defines the 
-                 AS that bagpipe verifies using the POLICY defined by the 
-                 latter. ARGS is passed to both the AS and POLICY.
+   verify ARGS       Verifies the SETUP which is passed as a mount point called
+                     `setup`, or passed as a tar file via standard input. The SETUP 
+                     must contain a file called `setup.rkt`. `setup.rkt` must define 
+                     two variables called `as` and `policy`; the former defines the 
+                     AS that bagpipe verifies using the POLICY defined by the 
+                     latter. ARGS is passed to both the AS and POLICY.
 
-   slave         Allow another bagpipe instance to use this machine.
+   incremental ARGS  Similarly to the above, verifies the SETUP which is passed in
+                     similar fashion. However, the `setup.rkt` must contain, in addition
+                     to the variables `as` and `policy,` a variable `old-as` corresponding
+                     to an already-verified version of the same setup. This option
+                     uses an incremental search to verify the new setup while `subtracting
+                     out` the old one as an optimization. ARGS is passed to AS, POLICY, and
+                     the OLD-AS.
 
-   help          Display this help message and exit. For additional help visit:
-                 http://konne.me/bagpipe
+   slave             Allow another bagpipe instance to use this machine.
+
+   help              Display this help message and exit. For additional help visit:
+                     http://bagpipe.uwplse.org/
 """)
